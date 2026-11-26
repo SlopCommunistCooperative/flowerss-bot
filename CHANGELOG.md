@@ -5,6 +5,7 @@
 - Replaced the Go runtime with Rust while retaining the `flowerss-bot` binary, CLI flags, configuration, Telegram commands, OPML, and existing SQLite/MySQL records.
 - Switched source builds, containers, CI, and release packaging to Cargo.
 - Use dedicated feed and OPML parsers, typed Telegram Bot API requests, and bundled SQLite.
+- Publish Linux amd64 and arm64 Docker images to GitHub Container Registry on `master` and version-tag pushes.
 
 ## [Unreleased] 2019-10-29
 

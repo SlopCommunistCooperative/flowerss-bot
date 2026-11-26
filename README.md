@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/indes/flowerss-bot/workflows/Release/badge.svg)](https://github.com/indes/flowerss-bot/actions?query=workflow%3ARelease)
 [![Test Status](https://github.com/indes/flowerss-bot/workflows/Test/badge.svg)](https://github.com/indes/flowerss-bot/actions?query=workflow%3ATest)
-![Build Docker Image](https://github.com/indes/flowerss-bot/workflows/Build%20Docker%20Image/badge.svg)
+[![Build Docker Image](https://github.com/SlopCommunistCooperative/flowerss-bot/actions/workflows/docker.yml/badge.svg)](https://github.com/SlopCommunistCooperative/flowerss-bot/actions/workflows/docker.yml)
 ![GitHub](https://img.shields.io/github/license/indes/flowerss-bot.svg)
 
 Rust implementation of the Telegram RSS bot. Existing `config.yml`, SQLite databases and MySQL databases can be reused.

@@ -6,6 +6,10 @@
 
 ## Docker 部署
 
+GitHub Actions 将 `linux/amd64` 和 `linux/arm64` 镜像发布到 GitHub Container Registry。
+推送到 `master` 会更新 `:latest`，推送 `v*` 标签会发布同名镜像标签（例如 `:v1.2.3`）。
+如果镜像设为私有，请先登录 `ghcr.io`。
+
 1.下载配置文件
 在项目目录下新建 `config.yml` 文件
 
@@ -13,7 +17,7 @@
 ```bash
 mkdir ~/flowerss &&\
 wget -O ~/flowerss/config.yml \
-    https://raw.githubusercontent.com/indes/flowerss-bot/master/config.yml.sample
+    https://raw.githubusercontent.com/SlopCommunistCooperative/flowerss-bot/master/config.yml.sample
 ```
 
 
@@ -32,7 +36,7 @@ sqlite:
 3.运行
 
 ```shell script
-docker run -d -v ~/flowerss:/root/.flowerss indes/flowerss-bot
+docker run -d -v "$HOME/flowerss:/root/.flowerss" ghcr.io/slopcommunistcooperative/flowerss-bot:latest
 ```
 
 ## 源码编译部署
