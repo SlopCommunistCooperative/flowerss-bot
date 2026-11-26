@@ -17,6 +17,12 @@
 /help 帮助
 ```
 
+### RSS 推送
+
+私聊、群组和频道都使用 Telegram 原生富消息推送 RSS。短文直接显示；长文先显示正文摘录，点「展开全文」即可在聊天内阅读。超过 Telegram 单条上限的正文会分成多条折叠消息，不截断正文。标题链接到原文；图片等外部媒体以链接呈现。订阅源未提供全文时，只显示订阅源提供的内容。
+
+`preview_text` 设置摘录字数和折叠阈值（未设置或为 `0` 时使用 300，最多 1000）。自建 Telegram Bot API 服务需支持 [`sendRichMessage`](https://core.telegram.org/bots/api#sendrichmessage)（Bot API 10.1 或更高）。
+
 ### Channel 订阅使用方法
 
 1. 将 Bot 添加为 Channel 管理员

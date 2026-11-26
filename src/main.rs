@@ -1,12 +1,11 @@
 mod app;
+mod article;
 mod bot;
 mod config;
 mod feed;
-mod message;
 mod opml;
 mod store;
 mod telegram;
-mod telegraph;
 
 use std::{fs::OpenOptions, sync::Mutex};
 
@@ -27,7 +26,7 @@ fn usage() {
         .next()
         .unwrap_or_else(|| "flowerss-bot".into());
     eprintln!(
-        "Usage of {}:\n  -c string\n    \tconfig file of flowerss\n  -d string\n    \twork directory of flowerss (default \"./\")\n  -testtpl\n    \ttest template\n  -v\n    \tprints flowerss-bot version",
+        "Usage of {}:\n  -c string\n    \tconfig file of flowerss\n  -d string\n    \twork directory of flowerss (default \"./\")\n  -v\n    \tprints flowerss-bot version",
         program.to_string_lossy()
     );
 }
@@ -55,14 +54,8 @@ async fn main() -> std::process::ExitCode {
 
 async fn run(cli: config::Cli) -> Result<()> {
     let config = config::Config::load(&cli.config, &cli.work_dir)?;
-    let template = message::MessageTemplate::new(&config)?;
-    if cli.test_template {
-        message::validate(&template);
-        return Ok(());
-    }
-
     init_logging(&config.log)?;
-    let app = app::App::open(config, template).await?;
+    let app = app::App::open(config).await?;
     let telegram = telegram::connect(
         app.http.clone(),
         &app.config.telegram_endpoint,

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::{Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use encoding_rs::Encoding;
@@ -95,6 +97,7 @@ fn parse_rss(bytes: &[u8]) -> Result<Feed> {
             .map(|mut item| {
                 let content = item
                     .content
+                    .filter(|content| !content.trim().is_empty())
                     .or_else(|| {
                         content_prefixes.clone().find_map(|prefix| {
                             item.extensions
@@ -105,6 +108,8 @@ fn parse_rss(bytes: &[u8]) -> Result<Feed> {
                                 .value
                         })
                     })
+                    .filter(|content| !content.trim().is_empty())
+                    .or(item.description)
                     .unwrap_or_default();
                 Item {
                     title: item
@@ -143,6 +148,9 @@ fn parse_atom(bytes: &[u8]) -> Result<Feed> {
                 let content = entry.content.and_then(|content| {
                     let body = content.body?;
                     let mime = content.content_type.as_str();
+                    if mime == "text/plain" {
+                        return Some(plain_html(body));
+                    }
                     if mime.starts_with("text/") || mime == "application/xhtml+xml" {
                         Some(body)
                     } else {
@@ -154,6 +162,15 @@ fn parse_atom(bytes: &[u8]) -> Result<Feed> {
                                 .unwrap_or(body),
                         )
                     }
+                });
+                let content = content.filter(|body| !body.trim().is_empty()).or_else(|| {
+                    entry.summary.map(|summary| {
+                        if summary.content_type.as_str() == "text/plain" {
+                            plain_html(summary.content)
+                        } else {
+                            summary.content
+                        }
+                    })
                 });
                 Item {
                     title: entry.title.map(|title| title.content).unwrap_or_default(),
@@ -201,12 +218,19 @@ fn parse_json(input: &str) -> Result<Feed> {
                 link: item.url.unwrap_or_default(),
                 content: item
                     .content_html
-                    .filter(|html| !html.is_empty())
-                    .or(item.content_text)
+                    .filter(|html| !html.trim().is_empty())
+                    .or_else(|| item.content_text.map(plain_html))
                     .unwrap_or_default(),
             })
             .collect(),
     })
+}
+
+fn plain_html(text: String) -> String {
+    match html_escape::encode_text(&text) {
+        Cow::Borrowed(_) if !text.contains('\n') => text,
+        escaped => escaped.replace('\n', "<br>"),
+    }
 }
 
 #[cfg(test)]
@@ -229,11 +253,13 @@ mod tests {
             ),
             ("post1", "https://a.test/1", "<b>Body &amp;</b>")
         );
-        assert!(rss.items[1].id.is_empty() && rss.items[1].content.is_empty());
+        assert!(rss.items[1].id.is_empty());
+        assert_eq!(rss.items[1].content, "Summary");
 
         let atom = parse(br#"<feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://a.test/">
             <entry><id> tag:a.test,2020:entry </id><link rel="self" href="feed"/><link href="post"/><content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Entry</p></div></content></entry>
             <entry><link href="missing-id"/></entry>
+            <entry><id>summary</id><summary type="text">a &lt; b &amp; c</summary></entry>
         </feed>"#).unwrap();
         assert_eq!(
             (
@@ -248,15 +274,16 @@ mod tests {
             )
         );
         assert!(atom.items[1].id.is_empty());
+        assert_eq!(atom.items[2].content, "a &lt; b &amp; c");
 
-        let json = parse(br#"{"title":"News","items":[{"id":"json:1","url":"https://a.test/1","content_text":"Plain text"}]}"#).unwrap();
+        let json = parse(br#"{"title":"News","items":[{"id":"json:1","url":"https://a.test/1","content_text":"a < b & c\nnext"}]}"#).unwrap();
         assert_eq!(
             (
                 &json.items[0].id[..],
                 &json.items[0].link[..],
                 &json.items[0].content[..]
             ),
-            ("json:1", "https://a.test/1", "Plain text")
+            ("json:1", "https://a.test/1", "a &lt; b &amp; c<br>next")
         );
     }
 

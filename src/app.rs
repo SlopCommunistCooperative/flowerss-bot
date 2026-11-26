@@ -4,17 +4,16 @@ use anyhow::Result;
 use teloxide_core::{
     Bot as Telegram,
     payloads::SendMessageSetters,
-    requests::{HasPayload, Requester},
-    types::{ChatId, ParseMode},
+    requests::Requester,
+    types::ChatId,
 };
 
 use crate::{
-    config::{Config, MessageMode},
+    article::Article,
+    config::Config,
     feed::{self, Item},
-    message::{self, Message, MessageTemplate},
     store::{Content, Source, Store},
-    telegram::{MARKDOWN, disable_link_preview, is_forbidden},
-    telegraph::Telegraph,
+    telegram::{MARKDOWN, is_forbidden, send_rich_messages},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -30,12 +29,10 @@ pub struct App {
     pub store: Store,
     pub http: reqwest::Client,
     pub telegram_poll_http: reqwest::Client,
-    template: MessageTemplate,
-    telegraph: Telegraph,
 }
 
 impl App {
-    pub async fn open(mut config: Config, template: MessageTemplate) -> Result<Self> {
+    pub async fn open(config: Config) -> Result<Self> {
         let proxy = if config.socks5.is_empty() {
             None
         } else {
@@ -55,14 +52,11 @@ impl App {
         // teloxide-core 0.13 does not apply its getUpdates timeout hint to reqwest.
         let telegram_poll_http = client(25)?;
         let store = Store::open(&config).await?;
-        let telegraph = Telegraph::init(&http, &mut config).await;
         Ok(Self {
             config,
             store,
             http,
             telegram_poll_http,
-            template,
-            telegraph,
         })
     }
 
@@ -114,22 +108,6 @@ impl App {
             title.truncate(title.trim_end_matches(' ').len());
             let start = title.len() - title.trim_start_matches(' ').len();
             title.drain(..start);
-            let telegraph_url = if self.config.telegraph_enabled()
-                && item.content.chars().nth(self.config.preview_text).is_some()
-            {
-                self.telegraph
-                    .publish(
-                        &self.http,
-                        &self.config,
-                        &source.title,
-                        &title,
-                        &item.link,
-                        &item.content,
-                    )
-                    .await
-            } else {
-                String::new()
-            };
             let content = Content {
                 source_id: source.id,
                 title,
@@ -137,7 +115,6 @@ impl App {
                 raw_id: item.id,
                 hash_id,
                 raw_link: item.link,
-                telegraph_url,
             };
             self.store.add_content(&content).await?;
             if collect {
@@ -202,11 +179,6 @@ impl App {
             return Ok(());
         }
         let subscribers = self.store.subscribers(source.id).await?;
-        let parse_mode = match self.config.message_mode {
-            MessageMode::Html => Some(ParseMode::Html),
-            MessageMode::Markdown => Some(MARKDOWN),
-            MessageMode::Plain => None,
-        };
         tracing::info!(
             source_id = source.id,
             subscribers = subscribers.len(),
@@ -214,26 +186,15 @@ impl App {
             "broadcast news"
         );
         for content in &contents {
-            let preview = message::preview(&content.description, self.config.preview_text);
+            let article = Article::new(source, content, self.config.preview_text);
             for sub in &subscribers {
-                let text = self.template.render(&Message {
-                    source_title: &source.title,
-                    content_title: &content.title,
-                    raw_link: &content.raw_link,
-                    preview: &preview,
-                    telegraph_url: &content.telegraph_url,
-                    tags: &sub.tag,
-                    telegraph: sub.enable_telegraph && !content.telegraph_url.is_empty(),
-                })?;
-                let mut request = telegram.send_message(ChatId(sub.user_id), text);
-                let payload = request.payload_mut();
-                payload.parse_mode = parse_mode;
-                payload.link_preview_options = self
-                    .config
-                    .disable_web_page_preview
-                    .then(disable_link_preview);
-                payload.disable_notification = Some(!sub.enable_notification);
-                let result = request.await;
+                let result = send_rich_messages(
+                    telegram,
+                    ChatId(sub.user_id),
+                    article.messages(&sub.tag),
+                    sub.enable_notification,
+                )
+                .await;
                 if let Err(err) = result {
                     tracing::warn!(%err, chat = sub.user_id, source_id = source.id, "broadcast failed");
                     if is_forbidden(&err)

@@ -60,7 +60,6 @@ async fn legacy_sqlite_persists_and_cleans_up() -> Result<()> {
             user_id: CHAT,
             source_id: source.id,
             enable_notification: false,
-            enable_telegraph: true,
             interval: 11,
             wait_time: 3,
             tag: "news".into(),
@@ -72,7 +71,6 @@ async fn legacy_sqlite_persists_and_cleans_up() -> Result<()> {
     );
     assert!(!store.add_subscription(CHAT, source.id, 30).await?);
     subscription.enable_notification = true;
-    subscription.enable_telegraph = false;
     subscription.interval = 17;
     subscription.wait_time = 0;
     subscription.tag.clear();
@@ -91,7 +89,6 @@ async fn legacy_sqlite_persists_and_cleans_up() -> Result<()> {
         raw_link: "https://example.org/new-item".into(),
         title: "新文章".into(),
         description: "transient HTML".into(),
-        telegraph_url: "https://telegra.ph/new".into(),
     };
     store.add_content(&article).await?;
     drop(store);
@@ -111,7 +108,6 @@ async fn legacy_sqlite_persists_and_cleans_up() -> Result<()> {
             user_id: SHARED,
             source_id: added.id,
             enable_notification: true,
-            enable_telegraph: true,
             interval: 8,
             wait_time: 8,
             tag: String::new(),
@@ -161,20 +157,17 @@ async fn sqlite_rolls_back_failed_orphan_cleanup() -> Result<()> {
         raw_id: "article".into(),
         hash_id: "hash".into(),
         raw_link: "https://example.org/article".into(),
-        telegraph_url: String::new(),
     };
     store.add_content(&content).await?;
 
-    let Backend::Sqlite(connection) = &store.backend else {
+    let Backend::Sqlite(pool) = &store.backend else {
         unreachable!("expected SQLite store");
     };
-    sqlite(connection, |connection| {
-        connection.execute_batch(
-            "CREATE TEMP TRIGGER reject_source_delete BEFORE DELETE ON sources
-             BEGIN SELECT RAISE(ABORT, 'reject source delete'); END;",
-        )?;
-        Ok(())
-    })
+    sqlx::query(
+        "CREATE TEMP TRIGGER reject_source_delete BEFORE DELETE ON sources
+         BEGIN SELECT RAISE(ABORT, 'reject source delete'); END;",
+    )
+    .execute(pool)
     .await?;
 
     let error = store
@@ -186,11 +179,9 @@ async fn sqlite_rolls_back_failed_orphan_cleanup() -> Result<()> {
     assert!(store.contains_content(&content.hash_id).await?);
     assert!(store.source(source.id).await?.is_some());
 
-    sqlite(connection, |connection| {
-        connection.execute_batch("DROP TRIGGER reject_source_delete")?;
-        Ok(())
-    })
-    .await?;
+    sqlx::query("DROP TRIGGER reject_source_delete")
+        .execute(pool)
+        .await?;
     assert!(store.remove_subscription(user, source.id).await?);
     assert!(store.subscription(user, source.id).await?.is_none());
     assert!(!store.contains_content(&content.hash_id).await?);

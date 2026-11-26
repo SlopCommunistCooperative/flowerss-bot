@@ -50,13 +50,14 @@ make build
 ```
 
 直接运行 `cargo run --locked` 也可启动。`-d` 指定工作目录，`-c` 指定配置文件，
-`-v` 打印版本，`-testtpl` 用示例数据预览推送模板（不启动 Bot）。
+`-v` 打印版本。
 
 ## 从 Go 版本升级
 
 先停止旧进程，再用 Rust 版启动。继续使用原来的 `config.yml` 和数据库；
 SQLite 和 MySQL 的订阅 ID、设置与文章去重记录无需导入或转换。
-SQLite 由内置的 SQLite 引擎打开，无需转换数据库文件。
+SQLite 和 MySQL 均由 SQLx 访问；SQLite 引擎仍内置，无需安装外部 SQLite 库。
+旧版 RSS 推送配置 `telegraph_*`、`message_tpl`、`message_mode` 和 `disable_web_page_preview` 不再使用，可以从配置文件中删除。
 
 
 ## 配置
@@ -65,14 +66,8 @@ SQLite 由内置的 SQLite 引擎打开，无需转换数据库文件。
 
 ```yml
 bot_token: XXX
-#多个telegraph_token可采用数组格式：
-# telegraph_token:
-#  - token_1
-#  - token_2
-telegraph_token: xxxx
 user_agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36
-preview_text: 0
-disable_web_page_preview: false
+preview_text: 300
 socks5: 127.0.0.1:1080
 update_interval: 10
 error_threshold: 100
@@ -96,14 +91,12 @@ allowed_users:
 | 配置项                     | 含义                                      | 是否必填                                       |
 | --------------------------| ----------------------------------------- | ------------------------------------------ |
 | bot_token                 | Telegram Bot Token                        | 必填                                       |
-| telegraph_token           | Telegraph Token, 用于转存原文到 Telegraph   | 可忽略（不转存原文到 Telegraph ）          |
-| preview_text              | 纯文字预览字数（不借助Telegraph）            |可忽略（默认0, 0为禁用）                    |
+| preview_text              | 富消息的摘录字数和折叠阈值                  | 可忽略（默认 300，最多 1000）                |
 | user_agent                | User Agent                                |可忽略                                     |
-| disable_web_page_preview  | 是否禁用 web 页面预览                       | 可忽略（默认 false, true 为禁用）          |
 | update_interval           | RSS 源扫描间隔（分钟）                      | 可忽略（默认 10）                          |
 | error_threshold           | 源最大出错次数                              |可忽略（默认 100）                          |
 | socks5                    | 用于无法正常 Telegram API 的环境            | 可忽略（能正常连接上 Telegram API 服务器） |
 | mysql                     | MySQL 数据库配置                           | 可忽略（使用 SQLite ）                     |
 | sqlite                    | SQLite 配置                               | 可忽略（已配置mysql时，该项失效）          |
-| telegram.endpoint         | 自定义telegram bot api url                | 可忽略（使用默认api url）          |
+| telegram.endpoint         | 自定义 Telegram Bot API URL；需支持 Bot API 10.1 或更高 | 可忽略（使用默认 API URL） |
 | allowed_users             | 允许使用bot的用户telegram id，                        | 可忽略，为空时所有用户都能使用bot          |

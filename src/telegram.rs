@@ -1,9 +1,10 @@
 use anyhow::{Context, Result, ensure};
 use reqwest::{Client, Url};
+use serde::{Serialize, de::IgnoredAny};
 use teloxide_core::{
     ApiError, Bot, RequestError,
-    requests::Requester,
-    types::{FileId, LinkPreviewOptions, ParseMode},
+    requests::{JsonRequest, Payload, Requester},
+    types::{ChatId, FileId, LinkPreviewOptions, ParseMode},
 };
 
 // The legacy templates and command messages use Markdown, not MarkdownV2.
@@ -44,6 +45,44 @@ pub(crate) async fn download(bot: &Bot, id: FileId) -> Result<impl AsRef<[u8]>> 
         .bytes()
         .await
         .map_err(reqwest::Error::without_url)?)
+}
+
+// teloxide-core 0.13 does not yet have a sendRichMessage payload.
+#[derive(Serialize)]
+struct SendRichMessage {
+    chat_id: ChatId,
+    rich_message: RichHtml,
+    disable_notification: bool,
+}
+
+#[derive(Serialize)]
+struct RichHtml {
+    html: String,
+}
+
+impl Payload for SendRichMessage {
+    const NAME: &'static str = "sendRichMessage";
+    type Output = IgnoredAny;
+}
+
+pub(crate) async fn send_rich_messages(
+    bot: &Bot,
+    chat_id: ChatId,
+    messages: impl Iterator<Item = String>,
+    notify: bool,
+) -> Result<(), RequestError> {
+    for (index, html) in messages.enumerate() {
+        JsonRequest::new(
+            bot.clone(),
+            SendRichMessage {
+                chat_id,
+                rich_message: RichHtml { html },
+                disable_notification: !notify || index > 0,
+            },
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 pub(crate) fn disable_link_preview() -> LinkPreviewOptions {

@@ -18,7 +18,19 @@ impl Drop for BotProcess {
 }
 
 #[test]
-fn subscribes_and_delivers_only_new_feed_items() -> Result<()> {
+fn delivers_private_articles_as_rich_messages() -> Result<()> {
+    exercise_delivery(private_chat())
+}
+
+#[test]
+fn delivers_group_articles_as_rich_messages() -> Result<()> {
+    exercise_delivery(
+        json!({"id": -1000000000101_i64, "type": "supergroup", "title": "News"}),
+    )
+}
+
+fn exercise_delivery(chat: Value) -> Result<()> {
+    let chat_id = chat["id"].as_i64().unwrap();
     let dir = tempfile::tempdir()?;
     let server = Server::http("127.0.0.1:0").map_err(anyhow::Error::from_boxed)?;
     let endpoint = format!("http://{}", server.server_addr());
@@ -38,9 +50,14 @@ fn subscribes_and_delivers_only_new_feed_items() -> Result<()> {
     );
 
     let subscribe = format!("/sub {feed_url}");
+    let extra_items = format!(
+        "<item><title>Short</title><guid>short</guid><description><![CDATA[<p>Hi &amp; 🙂</p>]]></description></item>\
+         <item><title>Oversized</title><guid>oversized</guid><description>{}尾</description></item>",
+        "长".repeat(30_000),
+    );
     let mut sent_command = false;
     let mut subscribed = false;
-    let mut delivered = false;
+    let mut delivered = 0;
     let mut scans_after_delivery = 0;
     let deadline = Instant::now() + Duration::from_secs(8);
     while scans_after_delivery < 3 {
@@ -48,7 +65,7 @@ fn subscribes_and_delivers_only_new_feed_items() -> Result<()> {
             .recv_timeout(deadline.saturating_duration_since(Instant::now()))?
             .context("bot did not finish subscription and delivery")?;
         if request.url() == "/feed" {
-            if delivered {
+            if delivered == 4 {
                 scans_after_delivery += 1;
             }
             let new = if subscribed {
@@ -57,7 +74,8 @@ fn subscribes_and_delivers_only_new_feed_items() -> Result<()> {
                 ""
             };
             request.respond(Response::from_string(format!(
-                "<rss xmlns:content=\"http://purl.org/rss/1.0/modules/content/\"><channel><title>Feed</title><item><title>Old article</title><guid>old</guid></item>{new}</channel></rss>"
+                "<rss xmlns:content=\"http://purl.org/rss/1.0/modules/content/\"><channel><title>Feed</title><item><title>Old article</title><guid>old</guid></item>{new}{}</channel></rss>",
+                if subscribed { extra_items.as_str() } else { "" },
             )))?;
             continue;
         }
@@ -66,6 +84,10 @@ fn subscribes_and_delivers_only_new_feed_items() -> Result<()> {
         let body: Value = serde_json::from_str(&body)?;
         let result = match request.url() {
             "/bottest/GetMe" => telegram_identity(),
+            "/bottest/GetChatAdministrators" if chat_id < 0 => {
+                assert_eq!(body["chat_id"], chat_id);
+                json!([{"status": "creator", "user": telegram_user(), "is_anonymous": false}])
+            }
             "/bottest/SetMyCommands" => {
                 let commands = body["commands"].as_array().unwrap();
                 assert!(commands.iter().any(|command| command["command"] == "sub"));
@@ -82,7 +104,7 @@ fn subscribes_and_delivers_only_new_feed_items() -> Result<()> {
                 json!([{"update_id": 7, "message": {
                     "message_id": 19,
                     "date": 1,
-                    "chat": private_chat(),
+                    "chat": chat,
                     "from": telegram_user(),
                     "text": subscribe,
                     "entities": [{"type": "bot_command", "offset": 0, "length": 4},
@@ -93,27 +115,43 @@ fn subscribes_and_delivers_only_new_feed_items() -> Result<()> {
                 assert_polling(&body, 8);
                 json!([])
             }
-            "/bottest/SendMessage" => {
-                assert_eq!(body["chat_id"], 101);
+            "/bottest/SendMessage" if !subscribed => {
+                assert_eq!(body["chat_id"], chat_id);
                 let message = body["text"].as_str().unwrap();
-                if !subscribed {
-                    assert_eq!(message, format!("[[1]][Feed]({feed_url}) 订阅成功"));
-                    assert_eq!(body["parse_mode"], "Markdown");
-                    assert_eq!(body["reply_parameters"]["message_id"], 19);
-                    assert_eq!(body["link_preview_options"]["is_disabled"], true);
-                    subscribed = true;
-                } else {
-                    assert!(!delivered, "duplicate delivery: {message}");
-                    assert_eq!(
-                        message,
-                        "<b>Feed</b>\n---------- Preview ----------\n新鲜\ntod\n-----------------------------\n<a href=\"https://example.test/new\">New &amp; shiny</a>"
-                    );
-                    assert_eq!(body["parse_mode"], "HTML");
-                    assert_eq!(body["disable_notification"], false);
-                    assert!(body.get("reply_parameters").is_none());
-                    delivered = true;
+                assert_eq!(message, format!("[[1]][Feed]({feed_url}) 订阅成功"));
+                assert_eq!(body["parse_mode"], "Markdown");
+                assert_eq!(body["reply_parameters"]["message_id"], 19);
+                assert_eq!(body["link_preview_options"]["is_disabled"], true);
+                subscribed = true;
+                json!({"message_id": 20, "date": 1, "chat": chat, "text": message})
+            }
+            "/bottest/sendRichMessage" if subscribed => {
+                assert_eq!(body["chat_id"], chat_id);
+                assert!(body.get("parse_mode").is_none());
+                assert_eq!(body["disable_notification"], delivered == 3);
+                let html = body["rich_message"]["html"].as_str().unwrap();
+                match delivered {
+                    0 => {
+                        assert!(html.contains("<h3><a href=\"https://example.test/new\">New &amp; shiny</a></h3>"));
+                        assert!(html.contains("<p>新鲜 tod…</p><details><summary>展开全文</summary><b>新鲜</b><br>today</details>"));
+                    }
+                    1 => {
+                        assert!(html.contains("<h3>Short</h3>"));
+                        assert!(html.contains("<p>Hi &amp; 🙂</p>"));
+                        assert!(!html.contains("<details"));
+                    }
+                    2 => {
+                        let first = "长".repeat(30_000);
+                        assert!(html.ends_with(&format!("<summary>展开正文（第 1 部分）</summary><p>{first}</p></details>")));
+                    }
+                    3 => {
+                        assert!(html.contains("<h3>Oversized</h3>"));
+                        assert!(html.ends_with("<details><summary>展开正文（第 2 部分）</summary><p>尾</p></details>"));
+                    }
+                    _ => bail!("duplicate rich delivery"),
                 }
-                telegram_message(20, message)
+                delivered += 1;
+                json!({"message_id": 20 + delivered, "date": 1, "chat": chat, "rich_message": {"blocks": []}})
             }
             other => bail!("unexpected API request: {other}"),
         };
@@ -138,10 +176,6 @@ fn telegram_user() -> Value {
     json!({"id": 101, "is_bot": false, "first_name": "Tester"})
 }
 
-fn telegram_message(message_id: i32, text: &str) -> Value {
-    json!({"message_id": message_id, "date": 1, "chat": private_chat(), "text": text})
-}
-
 fn assert_polling(body: &Value, offset: i32) {
     assert_eq!(body["offset"], offset);
     assert_eq!(body["timeout"], 10);
@@ -160,31 +194,14 @@ fn respond_telegram(request: tiny_http::Request, result: Value) -> Result<()> {
 }
 
 #[test]
-fn renders_configured_go_template_without_starting_bot() -> Result<()> {
+fn reports_version_without_starting_bot() -> Result<()> {
     let dir = tempfile::tempdir()?;
-    let config = dir.path().join("custom.yml");
-    std::fs::write(
-        &config,
-        "message_mode: Markdown\nmessage_tpl: '{{ if .EnableTelegraph }}{{.TelegraphURL}}{{else}}{{.PreviewText}}{{end}}'\n",
-    )?;
     let output = Command::new(BIN)
         .arg("-v")
         .current_dir(dir.path())
         .output()?;
     assert!(output.status.success());
     assert!(String::from_utf8(output.stdout)?.starts_with("version "));
-    let output = Command::new(BIN)
-        .args(["-testtpl", "-c"])
-        .arg(config)
-        .output()?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let output = String::from_utf8(output.stdout)?;
-    assert!(output.contains("\\[1](123) <nil>"));
-    assert!(output.contains("https://telegra.ph/markdown-07-07 <nil>"));
     assert!(!dir.path().join("data.db").exists());
     Ok(())
 }

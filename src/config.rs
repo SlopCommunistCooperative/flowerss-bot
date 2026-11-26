@@ -13,18 +13,11 @@ pub struct Config {
     pub bot_token: String,
     pub socks5: String,
     pub user_agent: String,
-    pub telegraph_token: Vec<String>,
-    pub telegraph_account: String,
-    pub telegraph_author_name: String,
-    pub telegraph_author_url: String,
     pub preview_text: usize,
-    pub disable_web_page_preview: bool,
     pub update_interval: i64,
     pub error_threshold: i64,
     pub allowed_users: Vec<i64>,
     pub telegram_endpoint: String,
-    pub message_tpl: Option<String>,
-    pub message_mode: MessageMode,
     pub sqlite: Sqlite,
     pub mysql: Mysql,
     pub log: Log,
@@ -46,13 +39,6 @@ pub struct Log {
     pub level: String,
     pub file: String,
     pub db_log: bool,
-}
-
-#[derive(Clone, Copy)]
-pub enum MessageMode {
-    Html,
-    Markdown,
-    Plain,
 }
 
 impl Config {
@@ -107,27 +93,12 @@ impl Config {
             bot_token: string("bot_token"),
             socks5: string("socks5"),
             user_agent: string("user_agent"),
-            telegraph_token: list("telegraph_token"),
-            telegraph_account: string("telegraph_account"),
-            telegraph_author_name: get("telegraph_author_name")
-                .map_or_else(|| "flowerss-bot".into(), |v| text(v).into_owned()),
-            telegraph_author_url: string("telegraph_author_url"),
             preview_text: int("preview_text", 0).max(0) as usize,
-            disable_web_page_preview: boolean("disable_web_page_preview"),
             update_interval: int("update_interval", 10),
             error_threshold: int("error_threshold", 100),
             allowed_users,
             telegram_endpoint: get("telegram.endpoint")
                 .map_or_else(|| TELEGRAM_ENDPOINT.into(), |v| text(v).into_owned()),
-            message_tpl: get("message_tpl").map(|v| text(v).into_owned()),
-            message_mode: match get("message_mode")
-                .map(|v| text(v).to_ascii_lowercase())
-                .as_deref()
-            {
-                None | Some("html") => MessageMode::Html,
-                Some("md" | "markdown") => MessageMode::Markdown,
-                _ => MessageMode::Plain,
-            },
             sqlite: Sqlite {
                 path: get("sqlite.path").map_or_else(
                     || work_dir.join("data.db"),
@@ -148,10 +119,6 @@ impl Config {
             },
         })
     }
-
-    pub fn telegraph_enabled(&self) -> bool {
-        !self.telegraph_token.is_empty()
-    }
 }
 
 fn text(value: &Value) -> Cow<'_, str> {
@@ -166,7 +133,6 @@ pub struct Cli {
     pub work_dir: PathBuf,
     pub config: PathBuf,
     pub version: bool,
-    pub test_template: bool,
     pub help: bool,
 }
 
@@ -176,7 +142,6 @@ impl Cli {
         let mut work_dir = PathBuf::from(".");
         let mut config = PathBuf::new();
         let mut version = false;
-        let mut test_template = false;
         let mut help = false;
         while let Some(arg) = args.next() {
             let arg = arg.to_string_lossy();
@@ -200,17 +165,12 @@ impl Cli {
                         config = value.into()
                     }
                 }
-                "v" | "testtpl" => {
-                    let enabled = match value {
+                "v" => {
+                    version = match value {
                         None | Some("1" | "t" | "T" | "true" | "TRUE" | "True") => true,
                         Some("0" | "f" | "F" | "false" | "FALSE" | "False") => false,
                         Some(value) => bail!("invalid boolean value {value:?} for -{name}"),
                     };
-                    if name == "v" {
-                        version = enabled
-                    } else {
-                        test_template = enabled
-                    }
                 }
                 "h" | "help" => {
                     help = true;
@@ -226,7 +186,6 @@ impl Cli {
             work_dir,
             config,
             version,
-            test_template,
             help,
         })
     }

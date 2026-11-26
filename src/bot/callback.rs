@@ -22,7 +22,6 @@ enum Action {
     Settings,
     Notification,
     Tag,
-    Telegraph,
     Update,
 }
 
@@ -35,7 +34,6 @@ impl Action {
             Self::Settings => "set_feed_item_btn",
             Self::Notification => "set_toggle_notice_btn",
             Self::Tag => "set_set_sub_tag_btn",
-            Self::Telegraph => "set_toggle_telegraph_btn",
             Self::Update => "set_toggle_update_btn",
         }
     }
@@ -50,7 +48,6 @@ impl Action {
             Self::Settings,
             Self::Notification,
             Self::Tag,
-            Self::Telegraph,
             Self::Update,
         ]
         .into_iter()
@@ -272,7 +269,7 @@ impl Bot<'_> {
             Action::CancelUnsubAll => Response::edit(View::plain("操作取消")),
             Action::Unsubscribe | Action::Settings => Response::edit(View::plain("退订错误！")),
             Action::Notification | Action::Tag => Response::edit(View::plain("系统错误！")),
-            Action::Telegraph | Action::Update => Response::answer(Some("error")),
+            Action::Update => Response::answer(Some("error")),
         };
         let attachment = if payload.is_empty()
             && matches!(action, Action::ConfirmUnsubAll | Action::CancelUnsubAll)
@@ -324,7 +321,7 @@ impl Bot<'_> {
             Action::Tag => Response::edit(View::markdown(format!(
                 "请使用`/setfeedtag {source} tags`命令为该订阅设置标签，tags为需要设置的标签，以空格分隔。（最多设置三个标签） \n例如：`/setfeedtag {source} 科技 苹果`"
             ))),
-            Action::Settings | Action::Notification | Action::Telegraph | Action::Update => {
+            Action::Settings | Action::Notification | Action::Update => {
                 self.change_setting(action, owner, source).await
             }
         }
@@ -375,10 +372,6 @@ impl Bot<'_> {
                 sub.enable_notification = !sub.enable_notification;
                 self.app.store.save_subscription(&sub).await.is_ok()
             }
-            Action::Telegraph => {
-                sub.enable_telegraph = !sub.enable_telegraph;
-                self.app.store.save_subscription(&sub).await.is_ok()
-            }
             Action::Update => {
                 feed.error_count = if feed.error_count < threshold {
                     self.paused_count()
@@ -411,21 +404,15 @@ fn setting_view(feed: &Source, sub: &Subscription, threshold: i64) -> View {
     } else {
         "关闭"
     };
-    let telegraph = if sub.enable_telegraph {
-        "开启"
-    } else {
-        "关闭"
-    };
     let tag = if sub.tag.is_empty() { "无" } else { &sub.tag };
     let text = format!(
-        "\n订阅<b>设置</b>\n[id] {}\n[标题] {}\n[Link] {}\n[抓取更新] {}\n[抓取频率] {}分钟\n[通知] {}\n[Telegraph] {}\n[Tag] {}\n",
+        "\n订阅<b>设置</b>\n[id] {}\n[标题] {}\n[Link] {}\n[抓取更新] {}\n[抓取频率] {}分钟\n[通知] {}\n[Tag] {}\n",
         feed.id,
         html_escape::encode_text(&feed.title),
         html_escape::encode_text(&feed.link),
         status,
         sub.interval,
         notification,
-        telegraph,
         html_escape::encode_text(tag),
     );
     let (owner, source) = (sub.user_id, feed.id);
@@ -450,18 +437,7 @@ fn setting_view(feed: &Source, sub: &Subscription, threshold: i64) -> View {
                 source,
             ),
         ],
-        vec![
-            Action::Telegraph.button(
-                if sub.enable_telegraph {
-                    "关闭 Telegraph 转码"
-                } else {
-                    "开启 Telegraph 转码"
-                },
-                owner,
-                source,
-            ),
-            Action::Tag.button("标签设置", owner, source),
-        ],
+        vec![Action::Tag.button("标签设置", owner, source)],
     ];
     View::html(text).keyboard(keys)
 }
@@ -495,7 +471,7 @@ mod tests {
     #[test]
     fn large_callback_ids_remain_usable() {
         for source in [i64::from(u32::MAX), i64::MAX] {
-            let button = Action::Telegraph.button("button", -1001234567890, source);
+            let button = Action::Update.button("button", -1001234567890, source);
             assert!(callback_data(&button).len() <= 64);
             let (_, payload) = Action::parse(callback_data(&button)).unwrap();
             let attachment = Attachment::parse(payload).unwrap();
