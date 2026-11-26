@@ -1,25 +1,26 @@
 app_name = flowerss-bot
 
-VERSION=$(shell git describe --tags --always)
-DATA=$(shell date)
-COMMIT=$(shell git rev-parse --short HEAD)
+VERSION ?= $(shell git describe --tags --always)
+COMMIT ?= $(shell git rev-parse --short HEAD)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+.PHONY: all build get run test clean
+
 test:
-	go test ./... -v
+	cargo test --locked
 
 all: build
 
-build: get
-	go build -trimpath -ldflags \
-	"-s -w -buildid= \
-	-X 'github.com/indes/flowerss-bot/internal/config.commit=$(COMMIT)' \
-	-X 'github.com/indes/flowerss-bot/internal/config.date=$(DATA)' \
-	-X 'github.com/indes/flowerss-bot/internal/config.version=$(VERSION)'" -o $(app_name)
+build:
+	APP_VERSION="$(VERSION)" APP_COMMIT="$(COMMIT)" BUILD_TIME="$(BUILD_TIME)" cargo build --locked --release
+	cp target/release/$(app_name) .
 
 get:
-	go mod download
+	cargo fetch --locked
 
 run:
-	go run .
+	cargo run --locked
 
 clean:
-	rm flowerss-bot
+	rm -f $(app_name)
+	cargo clean

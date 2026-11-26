@@ -4,30 +4,57 @@ on:
   release:
     types: [created]
 
+permissions:
+  contents: write
+
 jobs:
-  linux-releases-matrix:
-    name: Release Matrix
-    runs-on: ubuntu-latest
+  release:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        goos: [ linux ]
-        goarch: ["386", amd64]
-
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: Linux-64bit
+          - os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            name: Linux-32bit
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: macOS-64bit
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: macOS-ARM64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Windows-64bit
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v2
-      
-      - name: Set APP_VERSION env
-        run: echo ::`echo -n name=APP_VERSION`::$(echo ${GITHUB_REF} | rev | cut -d'/' -f 1 | rev )
-      - name: Set BUILD_TIME env
-        run: echo ::`echo -n name=BUILD_TIME`::$(date)
-      - name: Environment Printer
-        uses: managedkaos/print-env@v1.0
-
-      - uses: wangyoucao577/go-release-action@master
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          extra_files: config.yml.sample README.md
-          build_flags: -v
-          ldflags: -X 'github.com/indes/flowerss-bot/internal/config.commit=${{ github.sha }}' -X 'github.com/indes/flowerss-bot/internal/config.date=${{ env.BUILD_TIME }}' -X 'github.com/indes/flowerss-bot/internal/config.version=${{ env.APP_VERSION }}'
+          targets: ${{ matrix.target }}
+      - if: matrix.target == 'i686-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+      - name: Build and package
+        env:
+          APP_VERSION: ${{ github.event.release.tag_name }}
+          TARGET: ${{ matrix.target }}
+          ARTIFACT: flowerss-bot_${{ github.event.release.tag_name }}_${{ matrix.name }}
+        run: |
+          export APP_COMMIT="${GITHUB_SHA:0:7}" BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cargo build --locked --release --target "$TARGET"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            cp "target/$TARGET/release/flowerss-bot.exe" .
+            tar -a -cf "$ARTIFACT.zip" flowerss-bot.exe README.md config.yml.sample LICENSE
+          else
+            cp "target/$TARGET/release/flowerss-bot" .
+            tar -czf "$ARTIFACT.tar.gz" flowerss-bot README.md config.yml.sample LICENSE
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            flowerss-bot_*.tar.gz
+            flowerss-bot_*.zip

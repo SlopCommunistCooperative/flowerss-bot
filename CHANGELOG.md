@@ -1,5 +1,11 @@
 # Changelog
 
+## Rust port
+
+- Replaced the Go runtime with Rust while retaining the `flowerss-bot` binary, CLI flags, configuration, Telegram commands, OPML, and existing SQLite/MySQL records.
+- Switched source builds, containers, CI, and release packaging to Cargo.
+- Use dedicated feed and OPML parsers, typed Telegram Bot API requests, and bundled SQLite.
+
 ## [Unreleased] 2019-10-29
 
 ### Added

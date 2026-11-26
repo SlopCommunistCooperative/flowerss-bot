@@ -3,8 +3,9 @@
 [![Build Status](https://github.com/indes/flowerss-bot/workflows/Release/badge.svg)](https://github.com/indes/flowerss-bot/actions?query=workflow%3ARelease)
 [![Test Status](https://github.com/indes/flowerss-bot/workflows/Test/badge.svg)](https://github.com/indes/flowerss-bot/actions?query=workflow%3ATest)
 ![Build Docker Image](https://github.com/indes/flowerss-bot/workflows/Build%20Docker%20Image/badge.svg)
-[![Go Report Card](https://goreportcard.com/badge/github.com/indes/flowerss-bot)](https://goreportcard.com/report/github.com/indes/flowerss-bot)
 ![GitHub](https://img.shields.io/github/license/indes/flowerss-bot.svg)
+
+Rust implementation of the Telegram RSS bot. Existing `config.yml`, SQLite databases and MySQL databases can be reused.
 
 [安装与使用文档](https://flowerss-bot.now.sh/)  
 
@@ -28,7 +29,6 @@
 /unsub [url] 取消订阅（url 为可选）
 /list 查看当前订阅
 /set 设置订阅
-/check 检查当前订阅
 /setfeedtag [sub id] [tag1] [tag2] 设置订阅标签（最多设置三个Tag，以空格分割）
 /setinterval [interval] [sub id] 设置订阅刷新频率（可设置多个sub id，以空格分割）
 /activeall 开启所有订阅

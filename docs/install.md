@@ -37,12 +37,22 @@ docker run -d -v ~/flowerss:/root/.flowerss indes/flowerss-bot
 
 ## 源码编译部署
 
+安装 Rust、Cargo 和 C 工具链（用于编译内置 SQLite 和 TLS 依赖）后运行：
+
 ```shell script
 git clone https://github.com/indes/flowerss-bot && cd flowerss-bot
 make build
 ./flowerss-bot
 ```
 
+直接运行 `cargo run --locked` 也可启动。`-d` 指定工作目录，`-c` 指定配置文件，
+`-v` 打印版本，`-testtpl` 用示例数据预览推送模板（不启动 Bot）。
+
+## 从 Go 版本升级
+
+先停止旧进程，再用 Rust 版启动。继续使用原来的 `config.yml` 和数据库；
+SQLite 和 MySQL 的订阅 ID、设置与文章去重记录无需导入或转换。
+SQLite 由内置的 SQLite 引擎打开，无需转换数据库文件。
 
 
 ## 配置
