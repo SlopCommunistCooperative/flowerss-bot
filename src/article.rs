@@ -6,9 +6,9 @@ use scraper::{ElementRef, Html, node::Node};
 
 use crate::store::{Content, Source};
 
-const DEFAULT_SUMMARY_CHARS: usize = 300;
-// Leave room in Telegram's 32768-character limit for the heading, tags and summary.
+// Leave room in Telegram's 32768-character limit for the heading, tags and summary label.
 const BODY_CHARS: usize = 30_000;
+const BODY_ELEMENTS: usize = 490;
 const METADATA_CHARS: usize = 500;
 
 pub(crate) struct Article {
@@ -17,7 +17,7 @@ pub(crate) struct Article {
 }
 
 impl Article {
-    pub(crate) fn new(source: &Source, content: &Content, preview_text: usize) -> Self {
+    pub(crate) fn new(source: &Source, content: &Content) -> Self {
         let base = Url::parse(&source.link).ok();
         let original = web_url(base.as_ref(), &content.raw_link);
         let title = match content.title.trim() {
@@ -39,28 +39,20 @@ impl Article {
             0,
             false,
         );
-        let text = body.text.trim();
-        let summary_chars = if preview_text == 0 {
-            DEFAULT_SUMMARY_CHARS
-        } else {
-            preview_text.min(1000)
-        };
-        let summary: String = text
-            .split_whitespace()
-            .flat_map(|word| word.chars().chain([' ']))
-            .take(summary_chars + 2)
-            .collect();
-        let summary = summary.trim_end();
-        let excerpt = clip(summary, summary_chars);
 
         let mut parts = Vec::new();
-        if body.elements <= 490 && clip(&body.text, BODY_CHARS).len() == body.text.len() {
+        if body.elements <= BODY_ELEMENTS && clip(&body.text, BODY_CHARS).len() == body.text.len() {
             parts.push(body.html);
         } else {
             // Preserve all article text when it cannot fit as formatted HTML in one message.
-            let mut rest = text;
+            let mut rest = body.text.trim();
             while !rest.is_empty() {
                 let chunk = clip(rest, BODY_CHARS);
+                // The enclosing paragraph counts as one element; each newline becomes a <br>.
+                let chunk = match chunk.match_indices('\n').nth(BODY_ELEMENTS - 1) {
+                    Some((end, _)) => &chunk[..end],
+                    None => chunk,
+                };
                 parts.push(format!(
                     "<p>{}</p>",
                     encode_text(chunk).replace('\n', "<br>")
@@ -71,35 +63,25 @@ impl Article {
         if parts.is_empty() {
             parts.push(String::new());
         }
-        if parts.len() > 1 || excerpt.len() < summary.len() {
-            let first = std::mem::take(&mut parts[0]);
-            let label = if parts.len() == 1 {
-                "展开全文"
-            } else {
-                "展开正文（第 1 部分）"
-            };
-            parts[0] = format!(
-                "<p>{}…</p><details><summary>{label}</summary>{first}</details>",
-                encode_text(excerpt.trim_end()),
-            );
-            for (index, part) in parts.iter_mut().enumerate().skip(1) {
-                *part = format!(
-                    "<details><summary>展开正文（第 {} 部分）</summary>{part}</details>",
-                    index + 1
-                );
-            }
-        }
         Self { heading, parts }
     }
 
     pub(crate) fn messages<'a>(&'a self, tags: &'a str) -> impl Iterator<Item = String> + 'a {
         self.parts.iter().enumerate().map(move |(index, part)| {
-            let mut html = String::with_capacity(self.heading.len() + part.len() + tags.len());
+            let mut html = String::with_capacity(self.heading.len() + part.len() + tags.len() + 80);
             html.push_str(&self.heading);
             if index == 0 && !tags.is_empty() {
                 write!(html, "<p>{}</p>", encode_text(clip(tags, METADATA_CHARS))).unwrap();
             }
+            html.push_str("<details><summary>");
+            if self.parts.len() == 1 {
+                html.push_str("展开全文");
+            } else {
+                write!(html, "展开正文（第 {} 部分）", index + 1).unwrap();
+            }
+            html.push_str("</summary>");
             html.push_str(part);
+            html.push_str("</details>");
             html
         })
     }

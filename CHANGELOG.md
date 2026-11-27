@@ -6,7 +6,7 @@
 - Switched source builds, containers, CI, and release packaging to Cargo.
 - Use dedicated feed and OPML parsers, typed Telegram Bot API requests, and bundled SQLite.
 - Publish Linux amd64 and arm64 Docker images to GitHub Container Registry on `master` and version-tag pushes.
-- Send all RSS updates as Telegram rich messages, with excerpts and collapsible articles. Remove Telegraph, custom push templates, and `-testtpl`.
+- Send all RSS updates as Telegram rich messages with every article body collapsed by default. Remove Telegraph, custom push templates, and `-testtpl`.
 - Use SQLx for both SQLite and MySQL, sharing queries and transactions without changing existing databases.
 
 ## [Unreleased] 2019-10-29

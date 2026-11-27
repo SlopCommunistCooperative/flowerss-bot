@@ -67,7 +67,6 @@ SQLite 和 MySQL 均由 SQLx 访问；SQLite 引擎仍内置，无需安装外�
 ```yml
 bot_token: XXX
 user_agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36
-preview_text: 300
 socks5: 127.0.0.1:1080
 update_interval: 10
 error_threshold: 100
@@ -91,7 +90,6 @@ allowed_users:
 | 配置项                     | 含义                                      | 是否必填                                       |
 | --------------------------| ----------------------------------------- | ------------------------------------------ |
 | bot_token                 | Telegram Bot Token                        | 必填                                       |
-| preview_text              | 富消息的摘录字数和折叠阈值                  | 可忽略（默认 300，最多 1000）                |
 | user_agent                | User Agent                                |可忽略                                     |
 | update_interval           | RSS 源扫描间隔（分钟）                      | 可忽略（默认 10）                          |
 | error_threshold           | 源最大出错次数                              |可忽略（默认 100）                          |

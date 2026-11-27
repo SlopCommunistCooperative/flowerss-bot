@@ -52,8 +52,10 @@ fn exercise_delivery(chat: Value) -> Result<()> {
     let subscribe = format!("/sub {feed_url}");
     let extra_items = format!(
         "<item><title>Short</title><guid>short</guid><description><![CDATA[<p>Hi &amp; 🙂</p>]]></description></item>\
-         <item><title>Oversized</title><guid>oversized</guid><description>{}尾</description></item>",
+         <item><title>Oversized</title><guid>oversized</guid><description>{}尾</description></item>\
+         <item><title>Many breaks</title><guid>many-breaks</guid><description><![CDATA[start{}end]]></description></item>",
         "长".repeat(30_000),
+        "<br>".repeat(491),
     );
     let mut sent_command = false;
     let mut subscribed = false;
@@ -65,7 +67,7 @@ fn exercise_delivery(chat: Value) -> Result<()> {
             .recv_timeout(deadline.saturating_duration_since(Instant::now()))?
             .context("bot did not finish subscription and delivery")?;
         if request.url() == "/feed" {
-            if delivered == 4 {
+            if delivered == 6 {
                 scans_after_delivery += 1;
             }
             let new = if subscribed {
@@ -128,25 +130,28 @@ fn exercise_delivery(chat: Value) -> Result<()> {
             "/bottest/sendRichMessage" if subscribed => {
                 assert_eq!(body["chat_id"], chat_id);
                 assert!(body.get("parse_mode").is_none());
-                assert_eq!(body["disable_notification"], delivered == 3);
+                assert_eq!(body["disable_notification"], matches!(delivered, 3 | 5));
                 let html = body["rich_message"]["html"].as_str().unwrap();
                 match delivered {
                     0 => {
-                        assert!(html.contains("<h3><a href=\"https://example.test/new\">New &amp; shiny</a></h3>"));
-                        assert!(html.contains("<p>新鲜 tod…</p><details><summary>展开全文</summary><b>新鲜</b><br>today</details>"));
+                        assert_eq!(html, "<p><b>Feed</b></p><h3><a href=\"https://example.test/new\">New &amp; shiny</a></h3><details><summary>展开全文</summary><b>新鲜</b><br>today</details>");
                     }
                     1 => {
-                        assert!(html.contains("<h3>Short</h3>"));
-                        assert!(html.contains("<p>Hi &amp; 🙂</p>"));
-                        assert!(!html.contains("<details"));
+                        assert_eq!(html, "<p><b>Feed</b></p><h3>Short</h3><details><summary>展开全文</summary>\n<p>Hi &amp; 🙂</p>\n</details>");
                     }
                     2 => {
                         let first = "长".repeat(30_000);
-                        assert!(html.ends_with(&format!("<summary>展开正文（第 1 部分）</summary><p>{first}</p></details>")));
+                        assert_eq!(html, format!("<p><b>Feed</b></p><h3>Oversized</h3><details><summary>展开正文（第 1 部分）</summary><p>{first}</p></details>"));
                     }
                     3 => {
-                        assert!(html.contains("<h3>Oversized</h3>"));
-                        assert!(html.ends_with("<details><summary>展开正文（第 2 部分）</summary><p>尾</p></details>"));
+                        assert_eq!(html, "<p><b>Feed</b></p><h3>Oversized</h3><details><summary>展开正文（第 2 部分）</summary><p>尾</p></details>");
+                    }
+                    4 => {
+                        let breaks = "<br>".repeat(489);
+                        assert_eq!(html, format!("<p><b>Feed</b></p><h3>Many breaks</h3><details><summary>展开正文（第 1 部分）</summary><p>start{breaks}</p></details>"));
+                    }
+                    5 => {
+                        assert_eq!(html, "<p><b>Feed</b></p><h3>Many breaks</h3><details><summary>展开正文（第 2 部分）</summary><p><br><br>end</p></details>");
                     }
                     _ => bail!("duplicate rich delivery"),
                 }

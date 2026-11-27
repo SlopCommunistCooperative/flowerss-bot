@@ -186,7 +186,7 @@ impl App {
             "broadcast news"
         );
         for content in &contents {
-            let article = Article::new(source, content, self.config.preview_text);
+            let article = Article::new(source, content);
             for sub in &subscribers {
                 let result = send_rich_messages(
                     telegram,
